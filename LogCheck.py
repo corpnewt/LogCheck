@@ -131,6 +131,14 @@ class LogCheck:
                     try:
                         loaded_drivers.append(line.split("OC: Driver ")[1].split(" at ")[0])
                     except: pass
+                elif "OCA: Applying " in line and " byte ACPI patch " in line:
+                    acpi_patch = l_info.get("acpi_patch",[])
+                    # TODO:
+                    # Update if OC logs comments for ACPI patches in the future
+                    try:
+                        acpi_patch.append(line.split("OCA: Applying ")[1])
+                        l_info["acpi_patch"] = acpi_patch
+                    except: pass
                 elif "OCA: Inserted table " in line:
                     acpi_add = l_info.get("acpi_add",[])
                     try:
@@ -227,6 +235,7 @@ class LogCheck:
                 "valid_slides",
                 "acpi_add",
                 "acpi_delete",
+                "acpi_patch",
                 "device_properties_add",
                 "device_properties_delete",
                 "kernel_add",
