@@ -211,6 +211,9 @@ class LogCheck:
                             entries.append(entry)
                             l_info["picker_entries"] = entries
                     except: pass
+                elif "OCB: Should boot from " in line:
+                    try: l_info["booted_entry"] = " (T:".join(line.split("OCB: Should boot from ")[1].split(" (T:")[:-1])
+                    except: pass
                 elif "OCOS: OS set: " in line:
                     try: l_info["booted_os"] = line.split("OCOS: OS set: ")[1]
                     except: pass
@@ -287,10 +290,12 @@ class LogCheck:
                 "uefi_drivers",
                 "uefi_drivers_failed",
                 "picker_entries",
+                "booted_entry"
             )
             l_organized = {}
             for key in key_order:
-                if key in l_info: l_organized[key] = l_info[key]
+                if key in l_info and l_info[key]:
+                    l_organized[key] = l_info[key]
             # Got the info - set the window size to show it
             json_info = json.dumps(l_organized,indent=2) if l_organized else "No info found in the passed log!"
             h = max(len(json_info.split("\n"))+6,self.min_h)
