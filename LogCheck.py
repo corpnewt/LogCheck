@@ -13,7 +13,7 @@ class LogCheck:
             self.min_h = 24
             self.min_w = 80
         self.booter_bug_start = "068"
-        self.booter_bug_stop = "1000" # Update whenever fixed
+        self.booter_bug_stop = "999" # Update whenever fixed
         self.booter_quirks = {
             "ALRBL": "AllowRelocationBlock",
             "RTDFRG": "AvoidRuntimeDefrag",
