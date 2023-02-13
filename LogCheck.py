@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import sys, os, binascii, json
+from collections import OrderedDict
 from Scripts import plist, utils
 
 class LogCheck:
@@ -51,7 +52,7 @@ class LogCheck:
             # Should have the log - load it and save our path and info
             try:
                 with open(l_path,"r") as f:
-                    log = f.read()
+                    log = f.read().replace("\r","")
             except Exception as e:
                 self.error(title="Error Loading File",message="Could not read file:\n{}".format(e))
                 continue # Invalid file
@@ -292,7 +293,7 @@ class LogCheck:
                 "picker_entries",
                 "booted_entry"
             )
-            l_organized = {}
+            l_organized = OrderedDict()
             for key in key_order:
                 if key in l_info and l_info[key]:
                     l_organized[key] = l_info[key]
