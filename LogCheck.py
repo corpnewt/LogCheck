@@ -12,6 +12,39 @@ class LogCheck:
         else:
             self.min_h = 24
             self.min_w = 80
+        self.booter_bug_start = "068"
+        self.booter_bug_stop = "1000" # Update whenever fixed
+        self.booter_quirks = {
+            "ALRBL": "AllowRelocationBlock",
+            "RTDFRG": "AvoidRuntimeDefrag",
+            "DEVMMIO": "DevirtualiseMmio",
+            "NOSU": "DisableSingleUser",
+            "NOVRWR": "DisableVariableWrite",
+            "NOSB": "ProtectSecureBoot",
+            "FBSIG": "ForceBooterSignature",
+            "NOHBMAP": "DiscardHibernateMap",
+            "SMSLIDE": "EnableSafeModeSlide",
+            "WRUNPROT": "EnableWriteUnprotector",
+            "FEXITBS": "ForceExitBootServices",
+            "PRMRG": "ProtectMemoryRegions",
+            "CSLIDE": "ProvideCustomSlide",
+            "MSLIDE": "ProvideMaxSlide",
+            "PRSRV": "ProtectUefiServices",
+            "RBMAP": "RebuildAppleMemoryMap",
+            "VMAP": "SetupVirtualMap",
+            "APPLOS": "SignalAppleOS",
+            "RTPERMS": "SyncRuntimePermissions",
+            "ARBAR": "ResizeAppleGpuBars",
+            "RBIO": "ResizeUsePciRbIo"
+        }
+        self.bugged_booter_quirks = {}
+        # Correct for a logging bug introduced in 0.6.8 - first create a shallow copy
+        for x in self.booter_quirks:
+            self.bugged_booter_quirks[x] = self.booter_quirks[x]
+        # Update our bugged values
+        self.bugged_booter_quirks["NOVRWR"] = "ForceBooterSignature"
+        self.bugged_booter_quirks["NOSB"] = "DisableVariableWrite"
+        self.bugged_booter_quirks["FBSIG"] = "ProtectSecureBoot"
 
     def un_hex(self, value, swap = True, strip_null = True):
         h = value
@@ -23,6 +56,19 @@ class LogCheck:
             h = "".join(["" if h[i:i+2]=="00" and strip_null else h[i:i+2] for i in range(0,len(h),2)][::-1 if swap else None])
         try: return binascii.unhexlify(h.encode()).decode()
         except: return value
+
+    def check_booter_bork(self, oc_version):
+        return self.booter_bug_start <= oc_version.split("-")[1] < self.booter_bug_stop
+        try: return self.booter_bug_start <= oc_version.split("-")[1] < self.booter_bug_stop
+        except: return True
+
+    def map_booter_quirk(self, quirk, oc_version):
+        # Split the quirk and value for mapping
+        try: q,v = quirk.split(" -> ")
+        except: return quirk # Broke - bail
+        print(q,v)
+        d = self.bugged_booter_quirks if self.check_booter_bork(oc_version) else self.booter_quirks
+        return "{} -> {}".format(d.get(q,q),v)
 
     def main(self):
         while True:
@@ -60,6 +106,7 @@ class LogCheck:
             l_info = {}
             last_hda_controller = None
             last_codec = None
+            last_cpu = None
             for line in log.split("\n"):
                 if "HDA: Connecting controller - " in line:
                     # Got an audio controller - save it
@@ -113,8 +160,21 @@ class LogCheck:
                     # Got a CPU
                     cpus = l_info.get("cpus",[])
                     try:
-                        cpus.append(line.split("OCCPU: Found ")[1].strip())
+                        cpus.append({"name":line.split("OCCPU: Found ")[1].strip()})
                         l_info["cpus"] = cpus
+                    except: pass
+                elif "OCCPU: Pkg " in line and l_info.get("cpus"):
+                    # Apply the CPU info to the last CPU added
+                    last_cpu = l_info["cpus"][-1] # Get it explicitly as we know it exists
+                    try: last_cpu["cores_threads"] = line.split("Cores ")[1].replace(" Threads ","/")
+                    except: pass
+                elif "OCCPU: Detected Apple Processor Type: " in line and l_info.get("cpus"):
+                    # Apply the CPU info to the last CPU added
+                    last_cpu = l_info["cpus"][-1] # Get it explicitly as we know it exists
+                    try: last_cpu["apple_processor_type"] = line.split("OCCPU: Detected Apple Processor Type: ")[1]
+                    except: pass
+                elif "OCCPU: " in line and " CFG Lock " in line:
+                    try: l_info["cfg_lock"] = line.split()[-1] != "0"
                     except: pass
                 elif "OCVAR: Locate emulated NVRAM protocol - " in line:
                     try: l_info["emulated_nvram"] = line.split("OCVAR: Locate emulated NVRAM protocol - ")[1] != "Not Found"
@@ -201,8 +261,11 @@ class LogCheck:
                     acpi_add = l_info.get("acpi_add",[])
                     acpi_add.append("DSDT")
                     l_info["acpi_add"] = acpi_add
+                elif "OCSMB: Current SMBIOS " in line:
+                    try: l_info["current_smbios"] = line.split("OCSMB: Current SMBIOS ")[1].strip()
+                    except: pass
                 elif "OC: New SMBIOS: " in line:
-                    try: l_info["smbios"] = line.split("OC: New SMBIOS: ")[1]
+                    try: l_info["target_smbios"] = line.split("OC: New SMBIOS: ")[1]
                     except: pass
                 elif "OCB: Registering entry " in line:
                     entries = l_info.get("picker_entries",[])
@@ -245,7 +308,7 @@ class LogCheck:
                         l_info["kernel_block"] = kernel_block
                     except: pass
                 elif "OCABC: MAT support is " in line:
-                    try: l_info["mat_support"] = line.split("OCABC: MAT support is ")[1]
+                    try: l_info["mat_support"] = line.split("OCABC: MAT support is ")[1] != "0"
                     except: pass
                 elif "OCABC: All slides are usable!" in line:
                     l_info["all_slides"] = True
@@ -260,8 +323,20 @@ class LogCheck:
                 elif "AAPL: #[EB|MBA:NV] " in line:
                     try: l_info["boot-args"] = '">'.join('"<'.join(line.split('<"')[1:]).split('">')[:-1])
                     except: pass
+                elif "OCABC: " in line and any((x in line for x in self.bugged_booter_quirks)):
+                    booter_quirks = l_info.get("booter_quirks",[])
+                    try: # h[i:i+2] for i in range(0,len(h),2)
+                        quirks = line.split("OCABC: ")[1].split()
+                        booter_quirks.extend(["{} -> {}".format(*quirks[i:i+2]) for i in range(0,len(quirks),2)])
+                        l_info["booter_quirks"] = booter_quirks
+                    except: pass
             # Time to organize the data!
             l_info["uefi_drivers_failed"] = [x for x in l_info["uefi_drivers"] if not x in l_info["uefi_drivers_loaded"]]
+            # Remap the booter quirks to their "nice" names - and account for borked order as of 0.6.8
+            if l_info.get("booter_quirks") and l_info.get("oc_version"):
+                save_key = "booter_quirks_repaired" if self.check_booter_bork(l_info["oc_version"]) else "booter_quirks"
+                mapped_quirks = sorted([self.map_booter_quirk(q,l_info["oc_version"]) for q in l_info.pop("booter_quirks",[])],key=lambda x:x.lower())
+                l_info[save_key] = mapped_quirks
             # Let's migrate the dict to a new one with a preset order of keys
             # to make the flow of checking info a little easier
             key_order = (
@@ -269,8 +344,10 @@ class LogCheck:
                 "booted_os",
                 "booted_kernel",
                 "cpus",
-                "smbios",
+                "current_smbios",
+                "target_smbios",
                 "boot-args",
+                "cfg_lock",
                 "mat_support",
                 "mmio_devirt",
                 "all_slides",
@@ -280,6 +357,8 @@ class LogCheck:
                 "acpi_add",
                 "acpi_delete",
                 "acpi_patch",
+                "booter_quirks",
+                "booter_quirks_repaired",
                 "device_properties_add",
                 "device_properties_delete",
                 "kernel_add",
@@ -295,7 +374,7 @@ class LogCheck:
             )
             l_organized = OrderedDict()
             for key in key_order:
-                if key in l_info and l_info[key]:
+                if key in l_info and l_info[key] != []:
                     l_organized[key] = l_info[key]
             # Got the info - set the window size to show it
             json_info = json.dumps(l_organized,indent=2) if l_organized else "No info found in the passed log!"
