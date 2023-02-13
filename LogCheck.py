@@ -57,11 +57,47 @@ class LogCheck:
                 continue # Invalid file
             # Let's walk the log and extract info
             l_info = {}
-            loaded_drivers = []
-            drivers = []
+            last_hda_controller = None
+            last_codec = None
             for line in log.split("\n"):
-                # MMIO Devirt checks
-                if "OCABC: MMIO devirt " in line:
+                if "HDA: Connecting controller - " in line:
+                    # Got an audio controller - save it
+                    controllers = l_info.get("audio_controllers",{})
+                    try:
+                        last_hda_controller = line.split(" - ")[-1]
+                        controllers[last_hda_controller] = {} # Placeholder
+                        l_info["audio_controllers"] = controllers
+                    except: pass
+                elif "HDA: Connecting codec " in line and last_hda_controller is not None:
+                    # Got a codec and controller - save it
+                    controllers = l_info.get("audio_controllers",{})
+                    controller  = controllers.get(last_hda_controller,{})
+                    try:
+                        last_codec = line.split("HDA: Connecting ")[1].capitalize()
+                        controller[last_codec] = []
+                        controllers[last_hda_controller] = controller
+                        l_info["audio_controllers"] = controllers
+                    except: pass
+                elif "HDA:  | " in line \
+                    and last_codec is not None \
+                    and last_hda_controller is not None \
+                    and any((x in line for x in ("Codec ID: ","Codec name: "," is an output "))):
+                    # We got some codec info
+                    controllers = l_info.get("audio_controllers",{})
+                    controller  = controllers.get(last_hda_controller,{})
+                    codec       = controller.get(last_codec,[])
+                    try:
+                        if " is an output " in line: # Got an output specifier
+                            output_mask = int(line.split("(bitmask ")[1].split(")")[0])
+                            output_bit  = len("{:b}".format(output_mask))-1
+                            value = "Output at bit-{} (bitmask {})".format(output_bit,output_mask)
+                        else: # Got some other info
+                            value = line.split("HDA:  | ")[1]
+                        codec.append(value)
+                        controller[last_codec] = codec
+                        controllers[last_hda_controller] = controller
+                    except: pass
+                elif "OCABC: MMIO devirt " in line:
                     mmio_devirt = l_info.get("mmio_devirt",[])
                     try:
                         addr = line.split("OCABC: MMIO devirt ")[1].split(" (")[0]
@@ -124,19 +160,24 @@ class LogCheck:
                         l_info["nvram_delete"] = nvram
                     except: pass
                 elif "OC: Driver " in line and " is being loaded..." in line:
+                    uefi_drivers_loaded = l_info.get("uefi_drivers_loaded",[])
                     try:
-                        drivers.append(line.split("OC: Driver ")[1].split(" at ")[0])
+                        uefi_drivers_loaded.append(line.split("OC: Driver ")[1].split(" at ")[0])
+                        l_info["uefi_drivers_loaded"] = uefi_drivers_loaded
                     except: pass
                 elif "OC: Driver " in line and " is successfully loaded!" in line:
+                    uefi_drivers = l_info.get("uefi_drivers",[])
                     try:
-                        loaded_drivers.append(line.split("OC: Driver ")[1].split(" at ")[0])
+                        uefi_drivers.append(line.split("OC: Driver ")[1].split(" at ")[0])
+                        l_info["uefi_drivers"] = uefi_drivers
                     except: pass
-                elif "OCA: Applying " in line and " byte ACPI patch " in line:
+                elif ("OCA: Applying " in line or "OC: Applying " in line) and " byte ACPI patch " in line:
                     acpi_patch = l_info.get("acpi_patch",[])
                     # TODO:
                     # Update if OC logs comments for ACPI patches in the future
+                    sep = "OCA: Applying " if "OCA: Applying " in line else "OC: Applying "
                     try:
-                        acpi_patch.append(line.split("OCA: Applying ")[1])
+                        acpi_patch.append(line.split(sep)[1])
                         l_info["acpi_patch"] = acpi_patch
                     except: pass
                 elif "OCA: Inserted table " in line:
@@ -216,9 +257,7 @@ class LogCheck:
                     try: l_info["boot-args"] = '">'.join('"<'.join(line.split('<"')[1:]).split('">')[:-1])
                     except: pass
             # Time to organize the data!
-            failed_drivers = [x for x in drivers if not x in loaded_drivers]
-            if loaded_drivers: l_info["uefi_drivers"] = loaded_drivers
-            if failed_drivers: l_info["uefi_drivers_failed"] = failed_drivers
+            l_info["uefi_drivers_failed"] = [x for x in l_info["uefi_drivers"] if not x in l_info["uefi_drivers_loaded"]]
             # Let's migrate the dict to a new one with a preset order of keys
             # to make the flow of checking info a little easier
             key_order = (
@@ -233,6 +272,7 @@ class LogCheck:
                 "all_slides",
                 "usable_slides",
                 "valid_slides",
+                "audio_controllers",
                 "acpi_add",
                 "acpi_delete",
                 "acpi_patch",
