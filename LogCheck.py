@@ -331,7 +331,7 @@ class LogCheck:
                         l_info["booter_quirks"] = booter_quirks
                     except: pass
             # Time to organize the data!
-            l_info["uefi_drivers_failed"] = [x for x in l_info["uefi_drivers"] if not x in l_info["uefi_drivers_loaded"]]
+            l_info["uefi_drivers_failed"] = [x for x in l_info.get("uefi_drivers",[]) if not x in l_info.get("uefi_drivers_loaded",[])]
             # Remap the booter quirks to their "nice" names - and account for borked order as of 0.6.8
             if l_info.get("booter_quirks") and l_info.get("oc_version"):
                 save_key = "booter_quirks_repaired" if self.check_booter_bork(l_info["oc_version"]) else "booter_quirks"
