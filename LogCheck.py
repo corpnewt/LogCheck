@@ -457,15 +457,15 @@ class LogCheck:
 if __name__ == '__main__':
     # Setup the cli args
     parser = argparse.ArgumentParser(prog="LogCheck", description="Py script to scrape high level info from an opencore log")
-    parser.add_argument("-i", "--input", help="path to the input opencore-[timestamp].txt log file")
-    parser.add_argument("-o", "--output", help="path to the output json file - omit for stdout (requires --input)")
+    parser.add_argument("input_file",nargs="*", help="path to the input opencore-[timestamp].txt log file")
+    parser.add_argument("-o", "--output", help="path to the output json file - omit for stdout (requires an input_file)")
     parser.add_argument("-m", "--match-keys", help="regex pattern for top level keys to include (cli only)")
     parser.add_argument("-s", "--skip-keys", help="regex pattern for top level keys to exclude (cli only)")
 
     args = parser.parse_args()
 
     m = LogCheck()
-    if args.input: # Got cli args
-        m.cli_main(input_file=args.input,output_file=args.output,match_keys=args.match_keys,skip_keys=args.skip_keys)
+    if args.input_file: # Got cli args
+        m.cli_main(input_file=args.input_file[0],output_file=args.output,match_keys=args.match_keys,skip_keys=args.skip_keys)
     else:
         m.main()
