@@ -296,7 +296,15 @@ class LogCheck:
                 except: pass
             elif "OC: " in line and " injection " in line and not " injection skips " in line:
                 if ") - " in line: # Result of injection
-                    if not line.endswith(" - Success"):
+                    if line.endswith(" - Success"):
+                        kernel_add = l_info.get("kernel_add",{})
+                        try:
+                            bundle_path = " (".join(line.split(" injection ")[1].split(" (")[:-1])
+                            if not bundle_path in kernel_add:
+                                kernel_add[bundle_path] = "?.?.?"
+                                l_info["kernel_add"] = kernel_add
+                        except: pass
+                    else:
                         kernel_add_failed = l_info.get("kernel_add_failed",[])
                         try:
                             failed_kext = " (".join(line.split(" injection ")[1].split(" (")[:-1])
@@ -305,9 +313,13 @@ class LogCheck:
                             l_info["kernel_add_failed"] = kernel_add_failed
                         except: pass
                 else: # Likely has the kext version?
-                    kernel_add = l_info.get("kernel_add",[])
+                    kernel_add = l_info.get("kernel_add",{})
                     try:
-                        kernel_add.append(line.split(" injection ")[1])
+                        bundle_parts = line.split(" injection ")[1].split(" ")
+                        version = bundle_parts[-1]
+                        assert version.startswith("v")
+                        bundle_path = " ".join(bundle_parts[:-1])
+                        kernel_add[bundle_path] = version
                         l_info["kernel_add"] = kernel_add
                     except: pass
             elif "OC: " in line and " blocker " in line and not " blocker skips " in line:
