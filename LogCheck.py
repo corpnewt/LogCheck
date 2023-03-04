@@ -267,10 +267,33 @@ class LogCheck:
                     acpi_delete.append("{} -> {}".format(table_name,table_oem))
                     l_info["acpi_delete"] = acpi_delete
                 except: pass
+            elif "OC: Skipping add ACPI " in line:
+                acpi_add_skip = l_info.get("acpi_add_skip",[])
+                try:
+                    table_name = line.split("OC: Skipping add ACPI ")[1].split(" (")[0]
+                    acpi_add_skip.append(table_name)
+                    l_info["acpi_add_skip"] = acpi_add_skip
+                except: pass
             elif "OCA: Replaced DSDT of " in line:
                 acpi_add = l_info.get("acpi_add",[])
                 acpi_add.append("DSDT")
                 l_info["acpi_add"] = acpi_add
+            elif ("OC: Failed to " in line and " ACPI " in line) or "OC: ACPI patcher failed " in line:
+                acpi_failed = l_info.get("acpi_failed",[])
+                if "OC: Failed to drop ACPI " in line: # Special handler to adjust hex vals
+                    try:
+                        table_name = self.un_hex(line.split("OC: Failed to drop ACPI ")[1].split()[0])
+                        table_oem  = self.un_hex(line.split("OC: Failed to drop ACPI ")[1].split()[1])
+                        status     = line.split(" - ")[-1]
+                        acpi_failed.append("{} -> {} - {}".format(table_name,table_oem,status))
+                        l_info["acpi_failed"] = acpi_failed
+                    except: pass
+                else:
+                    try:
+                        error = "OC: ".join(line.split("OC: ")[1:])
+                        acpi_failed.append(error)
+                        l_info["acpi_failed"] = acpi_failed
+                    except: pass
             elif "OCSMB: Current SMBIOS " in line:
                 try: l_info["current_smbios"] = line.split("OCSMB: Current SMBIOS ")[1].strip()
                 except: pass
@@ -377,8 +400,10 @@ class LogCheck:
             "valid_slides",
             "audio_controllers",
             "acpi_add",
+            "acpi_add_skip",
             "acpi_delete",
             "acpi_patch",
+            "acpi_failed",
             "booter_quirks",
             "booter_quirks_repaired",
             "device_properties_add",
