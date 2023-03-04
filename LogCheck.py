@@ -116,6 +116,7 @@ class LogCheck:
         l_info = {}
         last_hda_controller = None
         last_codec = None
+        last_ocau = None
         last_cpu = None
         for line in log.split("\n"):
             if "HDA: Connecting controller - " in line:
@@ -123,8 +124,9 @@ class LogCheck:
                 controllers = l_info.get("audio_controllers",{})
                 try:
                     last_hda_controller = line.split(" - ")[-1]
-                    controllers[last_hda_controller] = {} # Placeholder
-                    l_info["audio_controllers"] = controllers
+                    if not last_hda_controller in controllers:
+                        controllers[last_hda_controller] = {} # Placeholder
+                        l_info["audio_controllers"] = controllers
                 except: pass
             elif "HDA: Connecting codec " in line and last_hda_controller is not None:
                 # Got a codec and controller - save it
@@ -154,6 +156,46 @@ class LogCheck:
                     codec.append(value)
                     controller[last_codec] = codec
                     controllers[last_hda_controller] = controller
+                except: pass
+            elif "OCAU: Matching " in line:
+                # Got which audio controller we're trying to match
+                controllers = l_info.get("audio_controllers",{})
+                try:
+                    last_ocau = line.split("OCAU: Matching ")[1].split("/VenMsg(")[0]
+                    if not last_ocau in controllers:
+                        controllers[last_ocau] = {} # Placeholder
+                    # Set our "audio_device" property
+                    controllers[last_ocau]["selected_audio_device"] = True
+                    l_info["audio_controllers"] = controllers
+                except: pass
+            elif "OCAU: " in line and "PciRoot(" in line:
+                # Got another controller
+                controllers = l_info.get("audio_controllers",{})
+                try:
+                    last_ocau = line.split("OCAU: ")[1].split()[1].split("/VenMsg(")[0]
+                    status = line.split(" - ")[-1]
+                    if not last_ocau in controllers:
+                        controllers[last_ocau] = {} # Placeholder
+                    statuses = controllers[last_ocau].get("status",[])
+                    if not status in statuses:
+                        statuses.append(status)
+                    # Set our "audio_device" property
+                    controllers[last_ocau]["status"] = statuses
+                    l_info["audio_controllers"] = controllers
+                except: pass
+            elif "OCAU: " in line and last_ocau:
+                # Got a likely status value
+                controllers = l_info.get("audio_controllers",{})
+                try:
+                    status = line.split("OCAU: ")[1]
+                    if not last_ocau in controllers:
+                        controllers[last_ocau] = {} # Placeholder
+                    statuses = controllers[last_ocau].get("status",[])
+                    if not status in statuses:
+                        statuses.append(status)
+                    # Set our "audio_device" property
+                    controllers[last_ocau]["status"] = statuses
+                    l_info["audio_controllers"] = controllers
                 except: pass
             elif "OCABC: MMIO devirt " in line:
                 mmio_devirt = l_info.get("mmio_devirt",[])
@@ -375,6 +417,23 @@ class LogCheck:
                     booter_quirks.extend(["{} -> {}".format(*quirks[i:i+2]) for i in range(0,len(quirks),2)])
                     l_info["booter_quirks"] = booter_quirks
                 except: pass
+            elif "OCRTC: Blacklisted " in line:
+                rtc_blacklist = l_info.get("rtc_blacklist",[])
+                try:
+                    blacklist = int(line.split()[-2],16)
+                    if not blacklist in rtc_blacklist:
+                        rtc_blacklist.append(blacklist)
+                    l_info["rtc_blacklist"] = rtc_blacklist
+                except: pass
+            elif "OC: Loading Apple Secure Boot with " in line:
+                try:
+                    sbm = line.split("OC: Loading Apple Secure Boot with ")[1].split(" (")[0]
+                    level = line.split(" (")[-1].split(")")[0]
+                    l_info["secure_boot_model"] = {sbm:level}
+                except: pass
+            elif "OC: Play chime started - " in line:
+                try: l_info["play_chime"] = line.split(" - ")[-1]
+                except: pass
         # Time to organize the data!
         l_info["uefi_drivers_failed"] = [x for x in l_info.get("uefi_drivers",[]) if not x in l_info.get("uefi_drivers_loaded",[])]
         # Remap the booter quirks to their "nice" names - and account for borked order as of 0.6.8
@@ -382,6 +441,23 @@ class LogCheck:
             save_key = "booter_quirks_repaired" if self.check_booter_bork(l_info["oc_version"]) else "booter_quirks"
             mapped_quirks = sorted([self.map_booter_quirk(q,l_info["oc_version"]) for q in l_info.pop("booter_quirks",[])],key=lambda x:x.lower())
             l_info[save_key] = mapped_quirks
+        # Let's shorten our RTC blacklist range by searching for contiguous sections - if we have it
+        if len(l_info.get("rtc_blacklist",[])):
+            last = start = l_info["rtc_blacklist"][0]
+            ranges = []
+            def format(start,last):
+                if last-start>0:
+                    return "0x{}-0x{}".format(hex(start)[2:].upper(),hex(last)[2:].upper())
+                return "0x{}".format(hex(last)[2:].upper())
+            for i,rtc in enumerate(sorted(l_info["rtc_blacklist"]),start=1):
+                # Check if we're contiguous - or reached the end
+                if rtc - last > 1:
+                    ranges.append(format(start,last))
+                    start = rtc
+                if i >= len(l_info["rtc_blacklist"]):
+                    ranges.append(format(start,rtc))
+                last = rtc
+            l_info["rtc_blacklist"] = ranges
         # Let's migrate the dict to a new one with a preset order of keys
         # to make the flow of checking info a little easier
         key_order = (
@@ -394,11 +470,14 @@ class LogCheck:
             "boot-args",
             "cfg_lock",
             "mat_support",
+            "secure_boot_model",
             "mmio_devirt",
+            "rtc_blacklist",
             "all_slides",
             "usable_slides",
             "valid_slides",
             "audio_controllers",
+            "play_chime",
             "acpi_add",
             "acpi_add_skip",
             "acpi_delete",
