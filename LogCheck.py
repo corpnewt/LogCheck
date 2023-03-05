@@ -359,7 +359,7 @@ class LogCheck:
             elif "OCAK: Read kernel version " in line:
                 try: l_info["booted_kernel"] = line.split("OCAK: Read kernel version ")[1].split(" (")[0]
                 except: pass
-            elif "OC: " in line and " injection " in line and not " injection skips " in line:
+            elif "OC: " in line and " injection " in line:
                 if ") - " in line: # Result of injection
                     if line.endswith(" - Success"):
                         kernel_add = l_info.get("kernel_add",{})
@@ -377,6 +377,15 @@ class LogCheck:
                             kernel_add_failed.append("{} - {}".format(failed_kext,reason))
                             l_info["kernel_add_failed"] = kernel_add_failed
                         except: pass
+                elif " injection skips " in line: # Got a skipped kext
+                    kernel_add_skip = l_info.get("kernel_add_skip",[])
+                    try:
+                        bundle_path = " (".join(line.split(" injection skips ")[1].split(" (")[:-1])
+                        kernel_add_skip.append(
+                            "{}->{}".format(bundle_path,line.split(" due to ")[1].split()[0].capitalize())
+                        )
+                        l_info["kernel_add_skip"] = kernel_add_skip
+                    except: pass
                 else: # Likely has the kext version?
                     kernel_add = l_info.get("kernel_add",{})
                     try:
@@ -554,6 +563,7 @@ class LogCheck:
             "device_properties_delete",
             "kernel_add",
             "kernel_add_failed",
+            "kernel_add_skip",
             "kernel_block",
             "kernel_patch",
             "kernel_quirks",
