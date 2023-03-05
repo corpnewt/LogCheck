@@ -387,12 +387,73 @@ class LogCheck:
                         kernel_add[bundle_path] = version
                         l_info["kernel_add"] = kernel_add
                     except: pass
-            elif "OC: " in line and " blocker " in line and not " blocker skips " in line:
+            elif "OC: " in line and " blocker " in line:
+                # Got some Kernel->Block entries
                 kernel_block = l_info.get("kernel_block",[])
                 try:
-                    kext = " (".join(" for ".join(line.split(" for ")[1:]).split(" (")[:-1])
-                    kernel_block.append(kext)
+                    block_target = line.split(" (")[0 if " blocker skips " in line else 1].split()[-1]
+                    block_name = ")".join("(".join(line.split("(")[1 if " blocker skips " in line else 2:]).split(")")[:-1])
+                    # cache_type = line.split("OC: ")[1].split(" blocker result ")[0]
+                    block_num = None
+                    if " blocker skips " in line: # It's a skip
+                        block_num = line.split(") block at ")[1].split(" due to ")[0]
+                        result    = "Skipped->{}".format(line.split(" due to ")[1].split()[0].capitalize())
+                    else: # It's a result
+                        block_num  = line.split(" for ")[0].split()[-1]
+                        block_type = line.split(" (")[1].split(")")[0]
+                        result     = "{}->{}".format(block_type,line.split(" - ")[-1])
+                    # Build the patch
+                    kernel_block.append("{}. {}|{}|{}".format(
+                        block_num or "?",
+                        block_target,
+                        block_name or "(Not Commented)",
+                        result
+                    ))
                     l_info["kernel_block"] = kernel_block
+                except: pass
+            elif all((x in line for x in ("OC: "," patcher ","(",")"))):
+                # Got some Kernel->Patch entries
+                kernel_patch = l_info.get("kernel_patch",[])
+                try:
+                    patch_target = line.split(" (")[0].split()[-1]
+                    patch_name = ")".join("(".join(line.split("(")[1:]).split(")")[:-1])
+                    cache_type = patch_num = result = None
+                    # Let's see if it's the result, skipped, or if something failed
+                    if " patcher result " in line or " patcher skips ": # Got a result/skip
+                        cache_type   = line.split("OC: ")[1].split(" patcher result ")[0]
+                        if " patcher skips " in line: # It's a skip
+                            patch_num = line.split(") patch at ")[1].split(" due to ")[0]
+                            result    = "Skipped->{}".format(line.split(" due to ")[1].split()[0].capitalize())
+                        else: # It's a result
+                            patch_num = line.split(" for ")[0].split()[-1]
+                            result    = "{}->{}".format(cache_type,line.split(" - ")[-1])
+                    elif line.endswith(" is borked"): # Got a borked patch
+                        patch_num = line.split("OC: Kernel patch ")[1].split()[0]
+                        result = "Borked"
+                    # Build the patch
+                    kernel_patch.append("{}. {}|{}|{}".format(
+                        patch_num or "?",
+                        patch_target,
+                        patch_name or "(Not Commented)",
+                        result
+                    ))
+                    l_info["kernel_patch"] = kernel_patch
+                except: pass
+            elif "OCAK: [OK] " in line or "OCAK: [FAIL] " in line:
+                # Got the newer logging style for kernel patching
+                kernel_quirks = l_info.get("kernel_quirks",[])
+                try:
+                    kernel_quirks.append("] ".join(line.split("] ")[1:]))
+                    l_info["kernel_quirks"] = kernel_quirks
+                except: pass
+            elif "OCAK: " in line and \
+                not any((x in line.lower() for x in ("invalid size","vtable"))) and \
+                any((x in line.lower() for x in ("patch","fail","success","skip","jettisoning"))):
+                # Got the older logging style for kernel patching
+                kernel_quirks = l_info.get("kernel_quirks",[])
+                try:
+                    kernel_quirks.append(line.split("OCAK: ")[1])
+                    l_info["kernel_quirks"] = kernel_quirks
                 except: pass
             elif "OCABC: MAT support is " in line:
                 try: l_info["mat_support"] = line.split("OCABC: MAT support is ")[1] != "0"
@@ -458,6 +519,10 @@ class LogCheck:
                     ranges.append(format(start,rtc))
                 last = rtc
             l_info["rtc_blacklist"] = ranges
+        # Sort any kernel patches by index
+        for key in ("kernel_patch","kernel_block"):
+            if len(l_info.get(key,[])):
+                l_info[key] = sorted(l_info[key],key=lambda x: -1 if x.startswith("?.") else int(x.split(".")[0]))
         # Let's migrate the dict to a new one with a preset order of keys
         # to make the flow of checking info a little easier
         key_order = (
@@ -490,6 +555,8 @@ class LogCheck:
             "kernel_add",
             "kernel_add_failed",
             "kernel_block",
+            "kernel_patch",
+            "kernel_quirks",
             "emulated_nvram",
             "nvram_add",
             "nvram_delete",
