@@ -118,6 +118,7 @@ class LogCheck:
         last_codec = None
         last_ocau = None
         last_cpu = None
+        driver_load_count = 0
         for line in log.split("\n"):
             if "HDA: Connecting controller - " in line:
                 # Got an audio controller - save it
@@ -272,6 +273,13 @@ class LogCheck:
                     nvram[guid] = values
                     l_info["nvram_delete"] = nvram
                 except: pass
+            elif "OC: Got " in line and " drivers" in line:
+                driver_load_count += 1
+                if driver_load_count > 1: # We have an OC version that can load early - mark any existing drivers
+                    if l_info.get("uefi_drivers"):
+                        l_info["uefi_drivers"] = ["{} (Loaded Early)".format(x) for x in l_info.get("uefi_drivers",[])]
+                    if l_info.get("uefi_drivers_loaded"):
+                        l_info["uefi_drivers_loaded"] = ["{} (Loaded Early)".format(x) for x in l_info.get("uefi_drivers_loaded",[])]
             elif "OC: Driver " in line and " is being loaded..." in line:
                 uefi_drivers_loaded = l_info.get("uefi_drivers_loaded",[])
                 try:
