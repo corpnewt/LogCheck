@@ -512,6 +512,12 @@ class LogCheck:
             elif "OC: Play chime started - " in line:
                 try: l_info["play_chime"] = line.split(" - ")[-1]
                 except: pass
+            elif "OCS: " in line:
+                schema_issues = l_info.get("schema_issues",[])
+                try:
+                    schema_issues.append("OCS: ".join(line.split("OCS: ")[1:]))
+                    l_info["schema_issues"] = schema_issues
+                except: pass
         # Time to organize the data!
         l_info["uefi_drivers_failed"] = [x for x in l_info.get("uefi_drivers",[]) if not x in l_info.get("uefi_drivers_loaded",[])]
         # Remap the booter quirks to their "nice" names - and account for borked order as of 0.6.8
@@ -544,6 +550,7 @@ class LogCheck:
         # to make the flow of checking info a little easier
         key_order = (
             "oc_version",
+            "schema_issues",
             "booted_os",
             "booted_kernel",
             "cpus",
