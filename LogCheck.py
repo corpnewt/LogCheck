@@ -46,6 +46,33 @@ class LogCheck:
         self.bugged_booter_quirks["NOSB"] = "DisableVariableWrite"
         self.bugged_booter_quirks["FBSIG"] = "ProtectSecureBoot"
 
+    def get_size(self, size, suffix=None, round_to=2, strip_zeroes=False):
+        # Failsafe in case our size is unknown
+        if size == -1:
+            return "Unknown"
+        ext = ["B","KB","MB","GB","TB","PB"]
+        div = 1024
+        s = float(size)
+        s_dict = {} # Initialize our dict
+        # Iterate the ext list, and divide by 1000 or 1024 each time to setup the dict {ext:val}
+        for e in ext:
+            s_dict[e] = s
+            s /= div
+        # Get our suffix if provided - will be set to None if not found, or if started as None
+        suffix = next((x for x in ext if x.lower() == suffix.lower()),None) if suffix else suffix
+        # Get the largest value that's still over 1
+        biggest = suffix if suffix else next((x for x in ext[::-1] if s_dict[x] >= 1), "B")
+        # Determine our rounding approach - first make sure it's an int; default to 2 on error
+        try:round_to=int(round_to)
+        except:round_to=2
+        round_to = 0 if round_to < 0 else 15 if round_to > 15 else round_to # Ensure it's between 0 and 15
+        bval = round(s_dict[biggest], round_to)
+        # Split our number based on decimal points
+        a,b = str(bval).split(".")
+        # Check if we need to strip or pad zeroes
+        b = b.rstrip("0") if strip_zeroes else b.ljust(round_to,"0") if round_to > 0 else ""
+        return "{:,}{} {}".format(int(a),"" if not b else "."+b,biggest)
+
     def un_hex(self, value, swap = True, strip_null = True):
         h = value
         if value.lower().startswith("0x"): h = value[2:]
@@ -202,9 +229,18 @@ class LogCheck:
                 mmio_devirt = l_info.get("mmio_devirt",[])
                 try:
                     addr = line.split("OCABC: MMIO devirt ")[1].split(" (")[0]
-                    mmio_devirt.append("{} ({})".format(addr,int(addr,16)))
+                    pages = int(line.split("(")[1].split()[0],16)
+                    size = self.get_size(pages*4096,strip_zeroes=True)
+                    mmio_devirt.append("{} - {} (0x{} page{}){}".format(
+                        addr,
+                        size.rjust(6),
+                        hex(pages)[2:].upper(),
+                        "" if pages == 1 else "s",
+                        "" if line.endswith(" skip 0") else " - Skipped"
+                    ))
                     l_info["mmio_devirt"] = mmio_devirt
-                except: pass
+                except:
+                    pass
             elif "OC: Current version is " in line:
                 # Got the version
                 try: l_info["oc_version"] = line.split("OC: Current version is ")[1]
