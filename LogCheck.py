@@ -231,13 +231,13 @@ class LogCheck:
                     addr = line.split("OCABC: MMIO devirt ")[1].split(" (")[0]
                     pages = int(line.split("(")[1].split()[0],16)
                     size = self.get_size(pages*4096,strip_zeroes=True)
-                    mmio_devirt.append("{} - {} (0x{} page{}){}".format(
+                    mmio_devirt_entry = [
                         addr,
-                        size.rjust(6),
-                        hex(pages)[2:].upper(),
-                        "" if pages == 1 else "s",
-                        "" if line.endswith(" skip 0") else " - Skipped"
-                    ))
+                        size,
+                        "0x{}".format(hex(pages)[2:].upper())
+                    ]
+                    mmio_devirt_entry.append("Devirtualised" if line.endswith(" skip 0") else "Whitelisted")
+                    mmio_devirt.append(mmio_devirt_entry)
                     l_info["mmio_devirt"] = mmio_devirt
                 except:
                     pass
@@ -582,6 +582,21 @@ class LogCheck:
         for key in ("kernel_patch","kernel_block"):
             if len(l_info.get(key,[])):
                 l_info[key] = sorted(l_info[key],key=lambda x: -1 if x.startswith("?.") else int(x.split(".")[0]))
+        # Let's pad the mmio_devirt list components as needed
+        pad_addr = len(max([x[0] for x in mmio_devirt],key=len))
+        pad_size = len(max([x[1] for x in mmio_devirt],key=len))
+        pad_page = len(max([x[2] for x in mmio_devirt],key=len))
+        mmio_devirt_print = []
+        for x in l_info.get("mmio_devirt",[]):
+            mmio_devirt_print.append("{} | {} | {} page{} | {}".format(
+                x[0].rjust(pad_addr),
+                x[1].rjust(pad_size),
+                x[2].rjust(pad_page),
+                " " if x[2]=="0x1" else "s",
+                x[3]
+            ))
+        if mmio_devirt_print:
+            l_info["mmio_devirt"] = mmio_devirt_print
         # Let's migrate the dict to a new one with a preset order of keys
         # to make the flow of checking info a little easier
         key_order = (
