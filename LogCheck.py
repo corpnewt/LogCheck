@@ -500,7 +500,7 @@ class LogCheck:
                     l_info["kernel_quirks"] = kernel_quirks
                 except: pass
             elif "OCAK: " in line and \
-                not any((x in line.lower() for x in ("invalid size","vtable"))) and \
+                not any((x in line.lower() for x in ("invalid size","vtable","ocak: 64-bit","ocak: 32-bit"))) and \
                 any((x in line.lower() for x in ("patch","fail","success","skip","jettisoning"))):
                 # Got the older logging style for kernel patching
                 kernel_quirks = l_info.get("kernel_quirks",[])
