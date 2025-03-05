@@ -17,6 +17,7 @@ class LogCheck:
         self.booter_quirks = {
             "ALRBL": "AllowRelocationBlock",
             "RTDFRG": "AvoidRuntimeDefrag",
+            "CLRTS": "ClearTaskSwitchBit",
             "DEVMMIO": "DevirtualiseMmio",
             "NOSU": "DisableSingleUser",
             "NOVRWR": "DisableVariableWrite",
