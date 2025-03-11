@@ -388,12 +388,21 @@ class LogCheck:
                 try: l_info["target_smbios"] = line.split("OC: New SMBIOS: ")[1]
                 except: pass
             elif "OCB: Registering entry " in line:
-                entries = l_info.get("picker_entries",[])
                 try:
                     entry = " (T:".join(line.split("OCB: Registering entry ")[1].split(" (T:")[:-1])
-                    if not entry in entries:
-                        entries.append(entry)
-                        l_info["picker_entries"] = entries
+                    if "] (T:128|" in line:
+                        # It's a tool with type 128
+                        tool = " [".join(entry.split(" [")[:-1])
+                        tools = l_info.get("tools",[])
+                        if not tool in tools:
+                            tools.append(tool)
+                            l_info["tools"] = tools
+                    else:
+                        # Not a tool - add to picker_entries
+                        entries = l_info.get("picker_entries",[])
+                        if not entry in entries:
+                            entries.append(entry)
+                            l_info["picker_entries"] = entries
                 except: pass
             elif "OCB: Should boot from " in line:
                 try: l_info["booted_entry"] = " (T:".join(line.split("OCB: Should boot from ")[1].split(" (T:")[:-1])
@@ -640,6 +649,7 @@ class LogCheck:
             "nvram_delete",
             "uefi_drivers",
             "uefi_drivers_failed",
+            "tools",
             "picker_entries",
             "booted_entry"
         )
