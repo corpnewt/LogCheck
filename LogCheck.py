@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import sys, os, binascii, json, argparse, re
 from collections import OrderedDict
-from Scripts import plist, utils
+from Scripts import utils
 
 class LogCheck:
     def __init__(self):
